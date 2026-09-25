@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "text-to-sql-agent"
+version = "0.1.0"
+description = "Cyclic LangGraph Text-to-SQL agent with a read-only sandbox and a bounded reflection loop."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Kartikey Kaushiq" }]
+dependencies = [
+  "langgraph>=1.0",
+  "pydantic>=2.7",
+  "anthropic>=1.0",
+  "sqlglot>=25",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.2"]
+api = ["fastapi>=0.115", "uvicorn[standard]>=0.30"]
+dev = ["pytest>=8", "httpx>=0.27", "fastapi>=0.115", "ruff>=0.6"]
+
+[project.scripts]
+text2sql = "text2sql.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/text2sql"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "evals", "evals/bench"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
