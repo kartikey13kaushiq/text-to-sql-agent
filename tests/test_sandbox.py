@@ -22,9 +22,7 @@ def test_writes_are_blocked_by_the_connection(db, sql):
 
 
 def test_runaway_query_hits_the_timeout(db):
-    result = db.execute(
-        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n) SELECT MAX(i) FROM n"
-    )
+    result = db.execute("WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n) SELECT MAX(i) FROM n")
     assert not result.ok
     assert result.error_type == "timeout"
 

@@ -11,7 +11,8 @@ Datasets:
   * a Spider subset: ``--spider-dir /path/to/spider --n 100`` (reads dev.json and
     database/<db_id>/<db_id>.sqlite from the official Spider release)
 
-    python evals/run_eval.py --max-repairs 2                 # needs ANTHROPIC_API_KEY
+    python evals/run_eval.py --max-repairs 2                 # native Claude (needs ANTHROPIC_API_KEY)
+    python evals/run_eval.py --model openai:gpt-4.1          # any agentkit provider
     python evals/run_eval.py --spider-dir ~/data/spider --n 100
 """
 
@@ -177,9 +178,7 @@ def evaluate(examples: list[dict], make_generator, max_repairs: int) -> dict:
         "first_attempt_failures": len(needed_repair),
         "first_failure_types": dict(Counter(r["first_error_type"] for r in needed_repair)),
         "repaired_to_correct": sum(r["correct_with_repair"] for r in needed_repair),
-        "repaired_but_wrong": sum(
-            r["status"] == "succeeded" and not r["correct_with_repair"] for r in needed_repair
-        ),
+        "repaired_but_wrong": sum(r["status"] == "succeeded" and not r["correct_with_repair"] for r in needed_repair),
         "unrecoverable": sum(r["status"] == "failed" for r in scored),
         "cost_per_question_usd": sum(r["cost_usd"] for r in scored) / n if n else 0.0,
         "mean_latency_s": sum(r["latency_s"] for r in scored) / n if n else 0.0,
@@ -206,12 +205,10 @@ def to_markdown(report: dict) -> str:
         lines.append(f"| {level} | {m['n']} | {m['no_repair']:.0%} | {m['with_repair']:.0%} |")
     lines += [
         "",
-        f"- First attempts that failed to run: {report['first_attempt_failures']} "
-        f"({report['first_failure_types']})",
+        f"- First attempts that failed to run: {report['first_attempt_failures']} ({report['first_failure_types']})",
         f"- Repaired to a correct answer: {report['repaired_to_correct']}; repaired but wrong: "
         f"{report['repaired_but_wrong']}; unrecoverable within budget: {report['unrecoverable']}",
-        f"- Cost per question: ${report['cost_per_question_usd']:.4f}; mean latency "
-        f"{report['mean_latency_s']:.2f}s",
+        f"- Cost per question: ${report['cost_per_question_usd']:.4f}; mean latency {report['mean_latency_s']:.2f}s",
     ]
     return "\n".join(lines) + "\n"
 
@@ -222,16 +219,17 @@ def main() -> None:
     parser.add_argument("--spider-dir", type=Path)
     parser.add_argument("--n", type=int, default=100)
     parser.add_argument("--seed", type=int, default=7)
-    parser.add_argument("--model", default=None)
+    parser.add_argument("--model", default=None, help="claude (default) or provider:model, e.g. openai:gpt-4.1")
     parser.add_argument("--out", type=Path, default=HERE / "results")
     args = parser.parse_args()
 
-    from text2sql.llm import ClaudeSQLGenerator
+    from text2sql.llm import make_generator
 
     examples = load_spider(args.spider_dir, args.n, args.seed) if args.spider_dir else load_bench()
-    report = evaluate(examples, lambda: ClaudeSQLGenerator(model=args.model), args.max_repairs)
+    report = evaluate(examples, lambda: make_generator(args.model), args.max_repairs)
     args.out.mkdir(exist_ok=True)
-    stem = f"{'spider' if args.spider_dir else 'retail'}-{report['model']}-r{args.max_repairs}"
+    model_slug = str(report["model"]).replace(":", "_").replace("/", "_")
+    stem = f"{'spider' if args.spider_dir else 'retail'}-{model_slug}-r{args.max_repairs}"
     (args.out / f"{stem}.json").write_text(json.dumps(report, indent=2, default=str))
     (args.out / f"{stem}.md").write_text(to_markdown(report))
     print(to_markdown(report))

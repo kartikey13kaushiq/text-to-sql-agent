@@ -1,5 +1,7 @@
 # Enterprise Text-to-SQL Agent
 
+[![CI](https://github.com/kartikey13kaushiq/text-to-sql-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/kartikey13kaushiq/text-to-sql-agent/actions/workflows/ci.yml) ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green) [![Ruff](https://img.shields.io/badge/lint-ruff-261230)](https://github.com/astral-sh/ruff)
+
 A cyclic **LangGraph** agent that translates natural-language questions into SQL. It runs the
 SQL under a **read-only sandboxed database role** and repairs failed queries through a
 **bounded reflection loop**: each retry is told exactly why the last query failed, so it isn't
@@ -66,7 +68,7 @@ repaired-to-correct, repaired-but-wrong, cost per question and latency.
 Two datasets:
 
 - **Spider subset** (the resume's benchmark). Download the official Spider release and run
-  `python evals/run_eval.py --spider-dir path/to/spider --n 100 --max-repairs 2`.
+  `python evals/run_eval.py --spider-dir path/to/spider --n 100 --max-repairs 2 [--model openai:gpt-4.1]`.
   The harness reads `dev.json` and `database/<db_id>/<db_id>.sqlite`, and samples with a fixed seed.
 - **Bundled `retail` benchmark.** 30 Spider-style questions (easy to extra) over a deterministic
   7-table database built by `evals/bench/build_db.py`. It's designed with names a model can't
@@ -92,15 +94,19 @@ TEXT2SQL_DATABASE=evals/bench/retail.sqlite uvicorn text2sql.api:app
 curl -s localhost:8000/query -H 'content-type: application/json' -d '{"question": "How many gold tier customers are there?"}'
 ```
 
-Or from the repo root: `docker compose up --build`. That brings up the API on :8002, connected
-to Postgres as the SELECT-only role.
+Or with Docker: `docker build -t text-to-sql-agent .`, then run it with `TEXT2SQL_DATABASE` pointing at a
+Postgres URL for the SELECT-only role (`sql/readonly_role.sql`).
 
-Configuration: `TEXT2SQL_DATABASE`, `TEXT2SQL_MODEL` (default `claude-opus-5`), `TEXT2SQL_MAX_REPAIRS`.
+**Any LLM provider.** `TEXT2SQL_MODEL` / `--model` accepts `claude` (native Anthropic generator,
+with schema prompt caching) or any `agentkit-core` (the portfolio's provider-agnostic core) spec: `openai:gpt-4.1`,
+`gemini:gemini-2.5-pro`, `ollama:qwen2.5-coder:14b`, `vllm:<model>`...
+
+Configuration: `TEXT2SQL_DATABASE`, `TEXT2SQL_MODEL` (default: native Claude), `TEXT2SQL_MAX_REPAIRS`.
 
 ## Tests
 
 ```bash
-pytest -q                                                         # 35 tests, offline
+pytest -q                                                         # 36 tests, offline
 TEST_DATABASE_URL=postgresql://postgres@localhost:5432/t2s pytest tests/test_postgres.py
 ```
 

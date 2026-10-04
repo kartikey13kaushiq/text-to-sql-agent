@@ -26,11 +26,7 @@ def ro_dsn():
     subprocess.run([sys.executable, str(ROOT / "sql" / "load_retail_postgres.py"), URL], check=True)
     params = conninfo_to_dict(URL)
     role_sql = (ROOT / "sql" / "readonly_role.sql").read_text()
-    role_sql = (
-        role_sql.replace(":password", "'ro-test'")
-        .replace(":db", params["dbname"])
-        .replace(":schema", "public")
-    )
+    role_sql = role_sql.replace(":password", "'ro-test'").replace(":db", params["dbname"]).replace(":schema", "public")
     with psycopg.connect(URL, autocommit=True) as conn:
         conn.execute(role_sql)
     return make_conninfo(URL, user="text2sql_ro", password="ro-test")
