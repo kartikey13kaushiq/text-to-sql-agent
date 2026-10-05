@@ -52,9 +52,7 @@ class SQLGenerator(Protocol):
 
     def generate(self, question: str, schema: str, dialect: str) -> SQLCandidate: ...
 
-    def repair(
-        self, question: str, schema: str, dialect: str, attempts: list[dict[str, Any]]
-    ) -> SQLRepair: ...
+    def repair(self, question: str, schema: str, dialect: str, attempts: list[dict[str, Any]]) -> SQLRepair: ...
 
 
 SYSTEM_PROMPT = """You translate business questions into SQL over the database schema you are given.
@@ -106,9 +104,7 @@ class ClaudeSQLGenerator:
         return f"<dialect>{dialect}</dialect>\n<schema>\n{schema}\n</schema>"
 
     def generate(self, question: str, schema: str, dialect: str) -> SQLCandidate:
-        return self._parse(
-            f"<question>{question}</question>", self._schema_block(schema, dialect), SQLCandidate
-        )
+        return self._parse(f"<question>{question}</question>", self._schema_block(schema, dialect), SQLCandidate)
 
     def repair(self, question, schema, dialect, attempts) -> SQLRepair:
         history = json.dumps(attempts, indent=2, default=str)
@@ -118,6 +114,56 @@ class ClaudeSQLGenerator:
             "the schema, then write a corrected query. Do not repeat a query that already failed."
         )
         return self._parse(prompt, self._schema_block(schema, dialect), SQLRepair)
+
+
+class LLMSQLGenerator:
+    """Provider-agnostic generator over any ``agentkit`` model (OpenAI-compatible, Anthropic, Gemini, local)."""
+
+    def __init__(self, model: Any):
+        self.chat_model = model
+        self.model = f"{model.provider}:{model.model}"
+        self.meter = UsageMeter()
+
+    def _parse(self, prompt: str, schema_block: str, output: type[T]) -> T:
+        from agentkit import generate_structured
+        from agentkit.pricing import cost_usd
+
+        result = generate_structured(
+            self.chat_model, output, prompt, system=f"{SYSTEM_PROMPT}\n\n{schema_block}", max_tokens=4096
+        )
+        for r in result.responses:
+            self.meter.calls += 1
+            self.meter.input_tokens += r.usage.input_tokens
+            self.meter.output_tokens += r.usage.output_tokens
+            self.meter.cost_usd += cost_usd(r.provider, r.model, r.usage) or 0.0
+            self.meter.latency_s += r.latency_s
+        return result.value
+
+    def generate(self, question: str, schema: str, dialect: str) -> SQLCandidate:
+        return self._parse(
+            f"<question>{question}</question>",
+            ClaudeSQLGenerator._schema_block(schema, dialect),
+            SQLCandidate,
+        )
+
+    def repair(self, question, schema, dialect, attempts) -> SQLRepair:
+        history = json.dumps(attempts, indent=2, default=str)
+        prompt = (
+            f"<question>{question}</question>\n\n<failed_attempts>\n{history}\n</failed_attempts>\n\n"
+            "Every attempt above failed with the error shown. Diagnose the most recent failure against "
+            "the schema, then write a corrected query. Do not repeat a query that already failed."
+        )
+        return self._parse(prompt, ClaudeSQLGenerator._schema_block(schema, dialect), SQLRepair)
+
+
+def make_generator(spec: str | None = None) -> SQLGenerator:
+    """``claude`` / unset -> native Anthropic generator; ``provider:model`` -> any agentkit provider."""
+    spec = spec or os.environ.get("TEXT2SQL_MODEL")
+    if spec and ":" in spec:
+        from agentkit import load_model
+
+        return LLMSQLGenerator(load_model(spec))
+    return ClaudeSQLGenerator(model=None if spec in (None, "claude") else spec)
 
 
 @dataclass

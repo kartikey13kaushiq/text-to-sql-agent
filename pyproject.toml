@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "text-to-sql-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Cyclic LangGraph Text-to-SQL agent with a read-only sandbox and a bounded reflection loop."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -20,6 +20,8 @@ dependencies = [
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.2"]
 api = ["fastapi>=0.115", "uvicorn[standard]>=0.30"]
+# Any LLM provider via agentkit-core: pip install "agentkit-core @ git+https://github.com/kartikey13kaushiq/agentkit"
+providers = ["agentkit-core"]
 dev = ["pytest>=8", "httpx>=0.27", "fastapi>=0.115", "ruff>=0.6"]
 
 [project.scripts]
@@ -33,8 +35,9 @@ testpaths = ["tests"]
 pythonpath = ["src", "evals", "evals/bench"]
 
 [tool.ruff]
-line-length = 110
+line-length = 120
 target-version = "py311"
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]

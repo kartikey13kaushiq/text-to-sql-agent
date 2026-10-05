@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from text2sql.llm import ClaudeSQLGenerator, SQLCandidate, SQLRepair
 
 
@@ -37,3 +39,23 @@ def test_repair_prompt_carries_every_failed_attempt():
     prompt = messages.calls[0]["messages"][0]["content"]
     assert "unknown table(s): x" in prompt and "no such column: b" in prompt
     assert gen.meter.calls == 1
+
+
+def test_provider_agnostic_generator_with_any_agentkit_model():
+    pytest.importorskip("agentkit", reason="install agentkit-core for the provider-agnostic backend")
+    from agentkit import ScriptedModel
+
+    from text2sql.llm import LLMSQLGenerator
+
+    model = ScriptedModel(
+        [
+            {"reasoning": "count rows", "sql": "SELECT COUNT(*) FROM t"},
+            {"diagnosis": "wrong table", "sql": "SELECT COUNT(*) FROM t2"},
+        ]
+    )
+    gen = LLMSQLGenerator(model)
+    assert gen.generate("how many?", "CREATE TABLE t (a INT);", "sqlite").sql == "SELECT COUNT(*) FROM t"
+    assert "CREATE TABLE t" in model.requests[0]["system"]
+    repair = gen.repair("how many?", "schema", "sqlite", [{"sql": "x", "error_type": "guard", "error": "boom"}])
+    assert repair.sql.endswith("t2") and "boom" in model.requests[1]["messages"][0].content
+    assert gen.meter.calls == 2 and gen.model == "scripted:scripted"
